@@ -4,6 +4,12 @@
 #include "SDL_compat.h"
 #include "streaming/streamutils.h"
 
+static bool isZoomDiagnosticLoggingEnabled()
+{
+    static const bool enabled = qEnvironmentVariableIntValue("MOONLIGHT_ZOOM_DIAGNOSTICS") != 0;
+    return enabled;
+}
+
 void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
 {
     int button;
@@ -121,6 +127,20 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
         x = qMin(qMax(x - dst.x, 0), dst.w);
         y = qMin(qMax(y - dst.y, 0), dst.h);
 
+        if (isZoomDiagnosticLoggingEnabled()) {
+            static Uint32 lastMotionLog = 0;
+            const Uint32 now = SDL_GetTicks();
+            if (now - lastMotionLog >= 250) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "ZoomDiag motion: stream=%dx%d window=%dx%d video=(%d,%d %dx%d) mapped=(%d,%d) inVideo=%d",
+                            m_StreamWidth, m_StreamHeight,
+                            windowWidth, windowHeight,
+                            dst.x, dst.y, dst.w, dst.h,
+                            x, y, mouseInVideoRegion);
+                lastMotionLog = now;
+            }
+        }
+
         // Send the mouse position update if one of the following is true:
         // a) it is in the video region now
         // b) it just left the video region (to ensure the mouse is clamped to the video boundary)
@@ -165,6 +185,25 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
     else if (event->which == SDL_TOUCH_MOUSEID) {
         // Ignore synthetic mouse events
         return;
+    }
+
+    if (isZoomDiagnosticLoggingEnabled()) {
+        int mouseX, mouseY;
+        SDL_GetMouseState(&mouseX, &mouseY);
+#if SDL_VERSION_ATLEAST(2, 0, 18)
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "ZoomDiag wheel: integer=(%d,%d) precise=(%.3f,%.3f) direction=%u mouse=(%d,%d) modifiers=0x%x absolute=%d reverse=%d",
+                    event->x, event->y,
+                    event->preciseX, event->preciseY,
+                    event->direction, mouseX, mouseY,
+                    SDL_GetModState(), m_AbsoluteMouseMode, m_ReverseScrollDirection);
+#else
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "ZoomDiag wheel: integer=(%d,%d) direction=%u mouse=(%d,%d) modifiers=0x%x absolute=%d reverse=%d",
+                    event->x, event->y,
+                    event->direction, mouseX, mouseY,
+                    SDL_GetModState(), m_AbsoluteMouseMode, m_ReverseScrollDirection);
+#endif
     }
 
     if (m_AbsoluteMouseMode) {
