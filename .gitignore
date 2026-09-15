@@ -5,5 +5,6 @@
 .vscode/
 build/
 libs/
+moonlight-diagnostics/
 config.tests/*/.qmake.stash
 config.tests/*/Makefile
