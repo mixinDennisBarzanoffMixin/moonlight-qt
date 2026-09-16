@@ -330,6 +330,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 
     if (event->preciseX != 0.0f) {
         const float rawValue = event->preciseX;
+        bool sendValue = true;
 
         // Invert the scroll direction if needed
         if (m_ReverseScrollDirection) {
@@ -340,28 +341,55 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 
 #ifdef Q_OS_DARWIN
         if (isCadScrollFilterEnabled()) {
-            if (isZoomDiagnosticLoggingEnabled()) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                            "ZoomDiag wheel-filter: seq=%llu axis=x action=suppress-horizontal raw=%.6f directed=%.6f",
-                            diagnosticSequence, rawValue, directedValue);
-            }
-            return;
-        }
+            static float pendingValue = 0.0f;
+            static Uint32 lastInputTimestamp = 0;
+            static Uint32 lastSendTimestamp = 0;
+            const Uint32 now = SDL_GetTicks();
 
-        // HACK: Clamp the scroll values on macOS to prevent OS scroll acceleration
-        // from generating wild scroll deltas when scrolling quickly.
-        event->preciseX = SDL_clamp(event->preciseX, -1.0f, 1.0f);
+            // Keep horizontal two-finger scrolling available while applying the
+            // same event-rate guard used for vertical scrolling. Previously the
+            // CAD filter discarded this axis entirely, which made side-to-side
+            // navigation impossible in KiCad and other wide canvases.
+            if (lastInputTimestamp != 0 && now - lastInputTimestamp > 120) {
+                pendingValue = 0.0f;
+                lastSendTimestamp = 0;
+            }
+            lastInputTimestamp = now;
+            pendingValue += event->preciseX;
+
+            if (lastSendTimestamp != 0 && now - lastSendTimestamp < cadScrollIntervalMs()) {
+                sendValue = false;
+                if (isZoomDiagnosticLoggingEnabled()) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                "ZoomDiag wheel-filter: seq=%llu axis=x action=coalesce pending=%.6f waitMs=%u",
+                                diagnosticSequence, pendingValue,
+                                cadScrollIntervalMs() - (now - lastSendTimestamp));
+                }
+            }
+            else {
+                event->preciseX = SDL_clamp(pendingValue, -1.0f, 1.0f);
+                pendingValue = 0.0f;
+                lastSendTimestamp = now;
+            }
+        }
+        else {
+            // HACK: Clamp the scroll values on macOS to prevent OS scroll acceleration
+            // from generating wild scroll deltas when scrolling quickly.
+            event->preciseX = SDL_clamp(event->preciseX, -1.0f, 1.0f);
+        }
 #endif
 
-        const short wireValue = (short)(event->preciseX * 120); // WHEEL_DELTA
-        LiSendHighResHScrollEvent(wireValue);
+        if (sendValue) {
+            const short wireValue = (short)(event->preciseX * 120); // WHEEL_DELTA
+            LiSendHighResHScrollEvent(wireValue);
 
-        if (isZoomDiagnosticLoggingEnabled()) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "ZoomDiag wheel-send: seq=%llu axis=x raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d cadFilter=%d",
-                        diagnosticSequence, rawValue, directedValue, event->preciseX, wireValue,
-                        directedValue != event->preciseX, wireValue == 0,
-                        isCadScrollFilterEnabled());
+            if (isZoomDiagnosticLoggingEnabled()) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "ZoomDiag wheel-send: seq=%llu axis=x raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d cadFilter=%d",
+                            diagnosticSequence, rawValue, directedValue, event->preciseX, wireValue,
+                            directedValue != event->preciseX, wireValue == 0,
+                            isCadScrollFilterEnabled());
+            }
         }
     }
 #else
