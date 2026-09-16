@@ -98,6 +98,8 @@ public:
 
     void handleMouseWheelEvent(SDL_MouseWheelEvent* event);
 
+    void handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase);
+
     void handleControllerAxisEvent(SDL_ControllerAxisEvent* event);
 
     void handleControllerButtonEvent(SDL_ControllerButtonEvent* event);
@@ -249,6 +251,11 @@ private:
     SDL_TimerID m_DragTimer;
     char m_DragButton;
     int m_NumFingersDown;
+    float m_MagnifyWheelRemainder;
+    bool m_MagnifyTouchActive;
+    float m_MagnifyTouchCenterX;
+    float m_MagnifyTouchCenterY;
+    float m_MagnifyTouchRadius;
 
     static const int k_ButtonMap[];
 };

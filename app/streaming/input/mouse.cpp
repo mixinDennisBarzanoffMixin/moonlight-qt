@@ -395,6 +395,148 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 #endif
 }
 
+void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase)
+{
+    constexpr unsigned int GestureStateBegan = 1;
+    constexpr unsigned int GestureStateEnded = 3;
+    constexpr unsigned int GestureStateCancelled = 4;
+    constexpr unsigned int GestureStateFailed = 5;
+    constexpr uint32_t MagnifyTouch1 = 0x4D4C0001;
+    constexpr uint32_t MagnifyTouch2 = 0x4D4C0002;
+
+    if (!isCaptureActive()) {
+        if (m_MagnifyTouchActive) {
+            LiSendTouchEvent(LI_TOUCH_EVENT_CANCEL_ALL, 0, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, LI_ROT_UNKNOWN);
+            m_MagnifyTouchActive = false;
+        }
+        return;
+    }
+
+    const bool hostSupportsTouch = (LiGetHostFeatureFlags() & LI_FF_PEN_TOUCH_EVENTS) != 0;
+    if (hostSupportsTouch) {
+        int windowWidth, windowHeight;
+        SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);
+
+        SDL_Rect src = { 0, 0, m_StreamWidth, m_StreamHeight };
+        SDL_Rect dst = { 0, 0, windowWidth, windowHeight };
+        StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+        m_MagnifyTouchCenterX = qBound(0.0f, (x - dst.x) / (float)dst.w, 1.0f);
+        m_MagnifyTouchCenterY = qBound(0.0f, (y - dst.y) / (float)dst.h, 1.0f);
+
+        const bool ending = phase == GestureStateEnded ||
+                            phase == GestureStateCancelled ||
+                            phase == GestureStateFailed;
+        if (!m_MagnifyTouchActive && ending) {
+            return;
+        }
+
+        if (!m_MagnifyTouchActive || phase == GestureStateBegan) {
+            m_MagnifyTouchRadius = 0.035f;
+            m_MagnifyTouchActive = true;
+
+            LiSendTouchEvent(LI_TOUCH_EVENT_DOWN, MagnifyTouch1,
+                             qBound(0.0f, m_MagnifyTouchCenterX - m_MagnifyTouchRadius, 1.0f),
+                             m_MagnifyTouchCenterY, 0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+            LiSendTouchEvent(LI_TOUCH_EVENT_DOWN, MagnifyTouch2,
+                             qBound(0.0f, m_MagnifyTouchCenterX + m_MagnifyTouchRadius, 1.0f),
+                             m_MagnifyTouchCenterY, 0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+        }
+
+        // The recognizer supplies incremental magnification because the bridge
+        // resets its value after every callback. Move the contacts apart or
+        // together for scale while their shared center carries X/Y translation.
+        m_MagnifyTouchRadius = qBound(0.005f,
+                                      m_MagnifyTouchRadius * (1.0f + magnification),
+                                      0.25f);
+
+        const float touch1X = qBound(0.0f, m_MagnifyTouchCenterX - m_MagnifyTouchRadius, 1.0f);
+        const float touch2X = qBound(0.0f, m_MagnifyTouchCenterX + m_MagnifyTouchRadius, 1.0f);
+        const uint8_t touchEventType = (phase == GestureStateCancelled || phase == GestureStateFailed) ?
+                                           LI_TOUCH_EVENT_CANCEL :
+                                           ending ? LI_TOUCH_EVENT_UP : LI_TOUCH_EVENT_MOVE;
+
+        LiSendTouchEvent(touchEventType, MagnifyTouch1, touch1X, m_MagnifyTouchCenterY,
+                         0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+        LiSendTouchEvent(touchEventType, MagnifyTouch2, touch2X, m_MagnifyTouchCenterY,
+                         0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+
+        if (isZoomDiagnosticLoggingEnabled()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "ZoomDiag magnify-touch: magnification=%.6f center=(%.6f,%.6f) radius=%.6f contacts=(%.6f,%.6f) phase=%u eventType=%u touches=%d",
+                        magnification,
+                        m_MagnifyTouchCenterX, m_MagnifyTouchCenterY,
+                        m_MagnifyTouchRadius, touch1X, touch2X,
+                        phase, touchEventType, touchCount);
+        }
+
+        if (ending) {
+            m_MagnifyTouchActive = false;
+        }
+        return;
+    }
+
+    if (magnification == 0.0f) {
+        return;
+    }
+
+    bool focalPointSent = false;
+    if (m_AbsoluteMouseMode) {
+        int windowWidth, windowHeight;
+        SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);
+
+        SDL_Rect src = { 0, 0, m_StreamWidth, m_StreamHeight };
+        SDL_Rect dst = { 0, 0, windowWidth, windowHeight };
+        StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+        if (isMouseInVideoRegion(x, y, windowWidth, windowHeight)) {
+            const int mappedX = qMin(qMax(x - dst.x, 0), dst.w);
+            const int mappedY = qMin(qMax(y - dst.y, 0), dst.h);
+            LiSendMousePositionEvent((short)mappedX, (short)mappedY, dst.w, dst.h);
+            focalPointSent = true;
+        }
+    }
+
+    // NSEvent magnification is a fractional scale delta. A cumulative 0.1
+    // magnification maps to one Windows WHEEL_DELTA notch. Preserve fractional
+    // wire deltas between events so slow pinches are never lost to rounding.
+    const float scaledDelta = magnification * 1200.0f + m_MagnifyWheelRemainder;
+    const short wireValue = (short)SDL_clamp((int)scaledDelta, -120, 120);
+    m_MagnifyWheelRemainder = scaledDelta - wireValue;
+
+    if (wireValue == 0) {
+        return;
+    }
+
+    constexpr short VK_LCONTROL = 0xA2;
+    const short wireCtrlCode = (short)(0x8000 | VK_LCONTROL);
+    const bool ctrlAlreadyDown = m_KeysDown.contains(VK_LCONTROL) || m_KeysDown.contains(0xA3);
+
+    if (!ctrlAlreadyDown) {
+        LiSendKeyboardEvent2(wireCtrlCode,
+                            KEY_ACTION_DOWN,
+                            MODIFIER_CTRL,
+                            0);
+    }
+
+    LiSendHighResScrollEvent(wireValue);
+
+    if (!ctrlAlreadyDown) {
+        LiSendKeyboardEvent2(wireCtrlCode,
+                            KEY_ACTION_UP,
+                            0,
+                            0);
+    }
+
+    if (isZoomDiagnosticLoggingEnabled()) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "ZoomDiag magnify-wheel-fallback: magnification=%.6f wire=%d remainder=%.6f focal=(%d,%d) focalSent=%d touches=%d phase=%u ctrlAlreadyDown=%d",
+                    magnification, wireValue, m_MagnifyWheelRemainder,
+                    x, y, focalPointSent, touchCount, phase, ctrlAlreadyDown);
+    }
+}
+
 bool SdlInputHandler::isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth, int windowHeight)
 {
     SDL_Rect src, dst;

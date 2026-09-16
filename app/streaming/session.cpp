@@ -7,6 +7,10 @@
 #include "SDL_compat.h"
 #include "utils.h"
 
+#ifdef Q_OS_DARWIN
+#include "input/macos_magnify.h"
+#endif
+
 #ifdef HAVE_FFMPEG
 #include "video/ffmpeg.h"
 #endif
@@ -1878,6 +1882,18 @@ void Session::exec()
 
     m_InputHandler->setWindow(m_Window);
 
+#ifdef Q_OS_DARWIN
+    const Uint32 magnifyEventType = SDL_RegisterEvents(1);
+    void* magnifyMonitor = nullptr;
+    if (magnifyEventType != (Uint32)-1) {
+        magnifyMonitor = installMacOSMagnifyMonitor(m_Window, magnifyEventType);
+    }
+    else {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Unable to reserve SDL event type for native macOS pinch input");
+    }
+#endif
+
     QSvgRenderer svgIconRenderer(QString(":/res/moonlight.svg"));
     QImage svgImage(ICON_SIZE, ICON_SIZE, QImage::Format_RGBA8888);
     svgImage.fill(0);
@@ -1995,6 +2011,21 @@ void Session::exec()
             continue;
         }
 #endif
+#ifdef Q_OS_DARWIN
+        if (event.type == magnifyEventType) {
+            MacOSMagnifyEvent* magnify = static_cast<MacOSMagnifyEvent*>(event.user.data1);
+            if (magnify != nullptr) {
+                m_InputHandler->handleMagnifyGesture(magnify->magnification,
+                                                     magnify->x,
+                                                     magnify->y,
+                                                     magnify->touchCount,
+                                                     magnify->phase);
+                delete magnify;
+            }
+            continue;
+        }
+#endif
+
         switch (event.type) {
         case SDL_QUIT:
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -2373,6 +2404,10 @@ DispatchDeferredCleanup:
         }
 #endif
     }
+
+#ifdef Q_OS_DARWIN
+    removeMacOSMagnifyMonitor(magnifyMonitor);
+#endif
 
     // This must be called after the decoder is deleted, because
     // the renderer may want to interact with the window

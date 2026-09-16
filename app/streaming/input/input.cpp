@@ -33,7 +33,12 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_RightButtonReleaseTimer(0),
       m_DragTimer(0),
       m_DragButton(0),
-      m_NumFingersDown(0)
+      m_NumFingersDown(0),
+      m_MagnifyWheelRemainder(0.0f),
+      m_MagnifyTouchActive(false),
+      m_MagnifyTouchCenterX(0.0f),
+      m_MagnifyTouchCenterY(0.0f),
+      m_MagnifyTouchRadius(0.035f)
 {
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {
