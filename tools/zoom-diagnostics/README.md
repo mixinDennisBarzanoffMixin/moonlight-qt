@@ -11,12 +11,13 @@ settings store.
 
 ## Reproduce consistently
 
-1. Set Moonlight to 1920x1080, 60 FPS, 20 Mbps, HEVC, and hardware decoding.
+1. Set Moonlight to 1920x1080, 60 FPS, 10 Mbps, HEVC, and hardware decoding.
 2. Enable remote-desktop optimized mouse mode and the performance overlay.
 3. Connect to the `Desktop` application on `video-editing-1`.
 4. Maximize Moonlight without changing its settings.
 5. Take one screenshot before using zoom or scrolling.
-6. Scroll vertically, pinch once (trackpads only), and click each screen corner.
+6. In KiCad, scroll slowly for five seconds, scroll quickly for five seconds,
+   pinch once (trackpads only), and click each screen corner.
 7. Take a second screenshot and disconnect.
 8. Run the collector immediately after disconnecting.
 
@@ -43,8 +44,11 @@ review it for machine names or network addresses you consider private.
 - Fullscreen, borderless, V-Sync, frame pacing, codec, and absolute-mouse mode
 - Client network link speed and whether Tailscale reaches the host directly
 - Recent Moonlight log lines related to rendering, scaling, and input
+- Each wheel event's timing and raw high-resolution delta (`wheel-raw`)
+- The exact Windows wheel delta sent, including client clamping or rounding to
+  zero (`wheel-send`)
+- Scroll events discarded before transmission and the reason (`wheel-drop`)
 
 If both clients reproduce the issue while their local DPI differs, inspect the
 host display mode and Sunshine resolution negotiation next. If only one client
 reproduces it, compare that client's DPI, window mode, and absolute-mouse mode.
-

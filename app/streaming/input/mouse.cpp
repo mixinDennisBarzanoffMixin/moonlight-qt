@@ -178,11 +178,36 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
 
 void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 {
+    unsigned long long diagnosticSequence = 0;
+    Uint32 diagnosticElapsedMs = 0;
+
+    if (isZoomDiagnosticLoggingEnabled()) {
+        static unsigned long long wheelSequence = 0;
+        static Uint32 lastWheelTimestamp = 0;
+        const Uint32 now = SDL_GetTicks();
+
+        diagnosticSequence = ++wheelSequence;
+        diagnosticElapsedMs = lastWheelTimestamp == 0 ? 0 : now - lastWheelTimestamp;
+        lastWheelTimestamp = now;
+    }
+
     if (!isCaptureActive()) {
+        if (isZoomDiagnosticLoggingEnabled()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "ZoomDiag wheel-drop: seq=%llu elapsedMs=%u reason=capture-inactive",
+                        diagnosticSequence, diagnosticElapsedMs);
+        }
+
         // Not capturing
         return;
     }
     else if (event->which == SDL_TOUCH_MOUSEID) {
+        if (isZoomDiagnosticLoggingEnabled()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "ZoomDiag wheel-drop: seq=%llu elapsedMs=%u reason=synthetic-touch-mouse",
+                        diagnosticSequence, diagnosticElapsedMs);
+        }
+
         // Ignore synthetic mouse events
         return;
     }
@@ -192,17 +217,21 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         SDL_GetMouseState(&mouseX, &mouseY);
 #if SDL_VERSION_ATLEAST(2, 0, 18)
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "ZoomDiag wheel: integer=(%d,%d) precise=(%.3f,%.3f) direction=%u mouse=(%d,%d) modifiers=0x%x absolute=%d reverse=%d",
+                    "ZoomDiag wheel-raw: seq=%llu elapsedMs=%u integer=(%d,%d) precise=(%.6f,%.6f) direction=%u mouse=(%d,%d) modifiers=0x%x absolute=%d reverse=%d focused=%d",
+                    diagnosticSequence, diagnosticElapsedMs,
                     event->x, event->y,
                     event->preciseX, event->preciseY,
                     event->direction, mouseX, mouseY,
-                    SDL_GetModState(), m_AbsoluteMouseMode, m_ReverseScrollDirection);
+                    SDL_GetModState(), m_AbsoluteMouseMode, m_ReverseScrollDirection,
+                    (SDL_GetWindowFlags(m_Window) & SDL_WINDOW_INPUT_FOCUS) != 0);
 #else
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "ZoomDiag wheel: integer=(%d,%d) direction=%u mouse=(%d,%d) modifiers=0x%x absolute=%d reverse=%d",
+                    "ZoomDiag wheel-raw: seq=%llu elapsedMs=%u integer=(%d,%d) direction=%u mouse=(%d,%d) modifiers=0x%x absolute=%d reverse=%d focused=%d",
+                    diagnosticSequence, diagnosticElapsedMs,
                     event->x, event->y,
                     event->direction, mouseX, mouseY,
-                    SDL_GetModState(), m_AbsoluteMouseMode, m_ReverseScrollDirection);
+                    SDL_GetModState(), m_AbsoluteMouseMode, m_ReverseScrollDirection,
+                    (SDL_GetWindowFlags(m_Window) & SDL_WINDOW_INPUT_FOCUS) != 0);
 #endif
     }
 
@@ -210,6 +239,12 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         int mouseX, mouseY;
         SDL_GetMouseState(&mouseX, &mouseY);
         if (!isMouseInVideoRegion(mouseX, mouseY)) {
+            if (isZoomDiagnosticLoggingEnabled()) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "ZoomDiag wheel-drop: seq=%llu elapsedMs=%u reason=outside-video mouse=(%d,%d)",
+                            diagnosticSequence, diagnosticElapsedMs, mouseX, mouseY);
+            }
+
             // Ignore scroll events outside the video region
             return;
         }
@@ -217,10 +252,14 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     if (event->preciseY != 0.0f) {
+        const float rawValue = event->preciseY;
+
         // Invert the scroll direction if needed
         if (m_ReverseScrollDirection) {
             event->preciseY = -event->preciseY;
         }
+
+        const float directedValue = event->preciseY;
 
 #ifdef Q_OS_DARWIN
         // HACK: Clamp the scroll values on macOS to prevent OS scroll acceleration
@@ -228,14 +267,26 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         event->preciseY = SDL_clamp(event->preciseY, -1.0f, 1.0f);
 #endif
 
-        LiSendHighResScrollEvent((short)(event->preciseY * 120)); // WHEEL_DELTA
+        const short wireValue = (short)(event->preciseY * 120); // WHEEL_DELTA
+        LiSendHighResScrollEvent(wireValue);
+
+        if (isZoomDiagnosticLoggingEnabled()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "ZoomDiag wheel-send: seq=%llu axis=y raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d",
+                        diagnosticSequence, rawValue, directedValue, event->preciseY, wireValue,
+                        directedValue != event->preciseY, wireValue == 0);
+        }
     }
 
     if (event->preciseX != 0.0f) {
+        const float rawValue = event->preciseX;
+
         // Invert the scroll direction if needed
         if (m_ReverseScrollDirection) {
             event->preciseX = -event->preciseX;
         }
+
+        const float directedValue = event->preciseX;
 
 #ifdef Q_OS_DARWIN
         // HACK: Clamp the scroll values on macOS to prevent OS scroll acceleration
@@ -243,7 +294,15 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         event->preciseX = SDL_clamp(event->preciseX, -1.0f, 1.0f);
 #endif
 
-        LiSendHighResHScrollEvent((short)(event->preciseX * 120)); // WHEEL_DELTA
+        const short wireValue = (short)(event->preciseX * 120); // WHEEL_DELTA
+        LiSendHighResHScrollEvent(wireValue);
+
+        if (isZoomDiagnosticLoggingEnabled()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "ZoomDiag wheel-send: seq=%llu axis=x raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d",
+                        diagnosticSequence, rawValue, directedValue, event->preciseX, wireValue,
+                        directedValue != event->preciseX, wireValue == 0);
+        }
     }
 #else
     if (event->y != 0) {
