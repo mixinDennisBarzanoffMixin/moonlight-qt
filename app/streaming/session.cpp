@@ -2261,6 +2261,18 @@ void Session::exec()
         case SDL_MOUSEWHEEL:
             m_InputHandler->handleMouseWheelEvent(&event.wheel);
             break;
+        case SDL_MULTIGESTURE:
+            if (qEnvironmentVariableIntValue("MOONLIGHT_ZOOM_DIAGNOSTICS") != 0) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "ZoomDiag gesture: touchId=%lld fingers=%u deltaRotation=%.6f deltaDistance=%.6f center=(%.6f,%.6f)",
+                            (long long) event.mgesture.touchId,
+                            event.mgesture.numFingers,
+                            event.mgesture.dTheta,
+                            event.mgesture.dDist,
+                            event.mgesture.x,
+                            event.mgesture.y);
+            }
+            break;
         case SDL_CONTROLLERAXISMOTION:
             m_InputHandler->handleControllerAxisEvent(&event.caxis);
             break;

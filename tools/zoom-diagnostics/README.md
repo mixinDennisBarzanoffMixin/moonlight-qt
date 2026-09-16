@@ -33,6 +33,19 @@ On Windows PowerShell:
 powershell -ExecutionPolicy Bypass -File .\tools\zoom-diagnostics\collect-windows.ps1
 ```
 
+To verify what the Windows input stack actually receives, run the wheel-only
+probe in the logged-in desktop session, reproduce in KiCad, and wait for it to
+exit:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\zoom-diagnostics\windows-wheel-probe.ps1 -DurationSeconds 120
+```
+
+It writes only wheel direction/delta, timing, injection flags, pointer position,
+and the foreground process name to
+`%LOCALAPPDATA%\MoonlightZoomDebug\windows-wheel.log`. It does not record keys,
+buttons, window titles, clipboard contents, or credentials.
+
 Each command writes a timestamped report under `moonlight-diagnostics/`. Attach
 that report and the two screenshots to the same issue. Before sharing a report,
 review it for machine names or network addresses you consider private.
@@ -48,6 +61,8 @@ review it for machine names or network addresses you consider private.
 - The exact Windows wheel delta sent, including client clamping or rounding to
   zero (`wheel-send`)
 - Scroll events discarded before transmission and the reason (`wheel-drop`)
+- Wheel deltas received by Windows, including whether Sunshine injected them
+  and which process was in the foreground (`WheelProbe`)
 
 If both clients reproduce the issue while their local DPI differs, inspect the
 host display mode and Sunshine resolution negotiation next. If only one client
