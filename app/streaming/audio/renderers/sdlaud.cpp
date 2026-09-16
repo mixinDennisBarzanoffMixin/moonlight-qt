@@ -124,6 +124,20 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
         SDL_Delay(1);
     }
 
+    // CoreAudio can occasionally stop consuming SDL's queue without changing
+    // the device status to SDL_AUDIO_STOPPED. Continuing to append samples in
+    // that state makes the queue grow indefinitely and eventually backs up the
+    // network audio path. Treat a queue that cannot drain within 100 ms as a
+    // renderer failure so the audio thread recreates the device.
+    const Uint32 queuedAudioMs = SDL_GetQueuedAudioSize(m_AudioDevice) /
+                                 m_FrameSize * m_FrameDurationMs;
+    if (queuedAudioMs > 50) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Audio queue failed to drain after 100 ms (%u ms queued)",
+                    queuedAudioMs);
+        return false;
+    }
+
     if (SDL_QueueAudio(m_AudioDevice, m_AudioBuffer, bytesWritten) < 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                      "Failed to queue audio sample: %s",
