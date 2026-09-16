@@ -10,6 +10,21 @@ static bool isZoomDiagnosticLoggingEnabled()
     return enabled;
 }
 
+static bool isCadScrollFilterEnabled()
+{
+    static const bool enabled = qEnvironmentVariableIntValue("MOONLIGHT_CAD_SCROLL_FILTER") != 0;
+    return enabled;
+}
+
+static Uint32 cadScrollIntervalMs()
+{
+    static const Uint32 interval = []() {
+        const int configured = qEnvironmentVariableIntValue("MOONLIGHT_CAD_SCROLL_INTERVAL_MS");
+        return (Uint32) qBound(8, configured == 0 ? 40 : configured, 250);
+    }();
+    return interval;
+}
+
 void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
 {
     int button;
@@ -253,6 +268,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     if (event->preciseY != 0.0f) {
         const float rawValue = event->preciseY;
+        bool sendValue = true;
 
         // Invert the scroll direction if needed
         if (m_ReverseScrollDirection) {
@@ -262,19 +278,53 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         const float directedValue = event->preciseY;
 
 #ifdef Q_OS_DARWIN
-        // HACK: Clamp the scroll values on macOS to prevent OS scroll acceleration
-        // from generating wild scroll deltas when scrolling quickly.
-        event->preciseY = SDL_clamp(event->preciseY, -1.0f, 1.0f);
+        if (isCadScrollFilterEnabled()) {
+            static float pendingValue = 0.0f;
+            static Uint32 lastInputTimestamp = 0;
+            static Uint32 lastSendTimestamp = 0;
+            const Uint32 now = SDL_GetTicks();
+
+            // Don't carry an unfinished fraction into the next gesture.
+            if (lastInputTimestamp != 0 && now - lastInputTimestamp > 120) {
+                pendingValue = 0.0f;
+                lastSendTimestamp = 0;
+            }
+            lastInputTimestamp = now;
+            pendingValue += event->preciseY;
+
+            if (lastSendTimestamp != 0 && now - lastSendTimestamp < cadScrollIntervalMs()) {
+                sendValue = false;
+                if (isZoomDiagnosticLoggingEnabled()) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                "ZoomDiag wheel-filter: seq=%llu axis=y action=coalesce pending=%.6f waitMs=%u",
+                                diagnosticSequence, pendingValue,
+                                cadScrollIntervalMs() - (now - lastSendTimestamp));
+                }
+            }
+            else {
+                event->preciseY = SDL_clamp(pendingValue, -1.0f, 1.0f);
+                pendingValue = 0.0f;
+                lastSendTimestamp = now;
+            }
+        }
+        else {
+            // HACK: Clamp the scroll values on macOS to prevent OS scroll acceleration
+            // from generating wild scroll deltas when scrolling quickly.
+            event->preciseY = SDL_clamp(event->preciseY, -1.0f, 1.0f);
+        }
 #endif
 
-        const short wireValue = (short)(event->preciseY * 120); // WHEEL_DELTA
-        LiSendHighResScrollEvent(wireValue);
+        if (sendValue) {
+            const short wireValue = (short)(event->preciseY * 120); // WHEEL_DELTA
+            LiSendHighResScrollEvent(wireValue);
 
-        if (isZoomDiagnosticLoggingEnabled()) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "ZoomDiag wheel-send: seq=%llu axis=y raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d",
-                        diagnosticSequence, rawValue, directedValue, event->preciseY, wireValue,
-                        directedValue != event->preciseY, wireValue == 0);
+            if (isZoomDiagnosticLoggingEnabled()) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "ZoomDiag wheel-send: seq=%llu axis=y raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d cadFilter=%d",
+                            diagnosticSequence, rawValue, directedValue, event->preciseY, wireValue,
+                            directedValue != event->preciseY, wireValue == 0,
+                            isCadScrollFilterEnabled());
+            }
         }
     }
 
@@ -289,6 +339,15 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         const float directedValue = event->preciseX;
 
 #ifdef Q_OS_DARWIN
+        if (isCadScrollFilterEnabled()) {
+            if (isZoomDiagnosticLoggingEnabled()) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "ZoomDiag wheel-filter: seq=%llu axis=x action=suppress-horizontal raw=%.6f directed=%.6f",
+                            diagnosticSequence, rawValue, directedValue);
+            }
+            return;
+        }
+
         // HACK: Clamp the scroll values on macOS to prevent OS scroll acceleration
         // from generating wild scroll deltas when scrolling quickly.
         event->preciseX = SDL_clamp(event->preciseX, -1.0f, 1.0f);
@@ -299,9 +358,10 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 
         if (isZoomDiagnosticLoggingEnabled()) {
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "ZoomDiag wheel-send: seq=%llu axis=x raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d",
+                        "ZoomDiag wheel-send: seq=%llu axis=x raw=%.6f directed=%.6f clamped=%.6f wire=%d clampedByClient=%d quantizedToZero=%d cadFilter=%d",
                         diagnosticSequence, rawValue, directedValue, event->preciseX, wireValue,
-                        directedValue != event->preciseX, wireValue == 0);
+                        directedValue != event->preciseX, wireValue == 0,
+                        isCadScrollFilterEnabled());
         }
     }
 #else

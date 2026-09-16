@@ -46,6 +46,12 @@ and the foreground process name to
 `%LOCALAPPDATA%\MoonlightZoomDebug\windows-wheel.log`. It does not record keys,
 buttons, window titles, clipboard contents, or credentials.
 
+For the opt-in KiCad comparison build, launch Moonlight with
+`MOONLIGHT_CAD_SCROLL_FILTER=1`. On macOS this suppresses horizontal trackpad
+drift and coalesces vertical wheel input. The default interval is 40 ms and can
+be changed with `MOONLIGHT_CAD_SCROLL_INTERVAL_MS`; normal Moonlight behavior is
+unchanged when the filter is disabled.
+
 Each command writes a timestamped report under `moonlight-diagnostics/`. Attach
 that report and the two screenshots to the same issue. Before sharing a report,
 review it for machine names or network addresses you consider private.
@@ -63,6 +69,8 @@ review it for machine names or network addresses you consider private.
 - Scroll events discarded before transmission and the reason (`wheel-drop`)
 - Wheel deltas received by Windows, including whether Sunshine injected them
   and which process was in the foreground (`WheelProbe`)
+- CAD-filter decisions, including coalesced vertical input and suppressed
+  horizontal drift (`wheel-filter`)
 
 If both clients reproduce the issue while their local DPI differs, inspect the
 host display mode and Sunshine resolution negotiation next. If only one client
