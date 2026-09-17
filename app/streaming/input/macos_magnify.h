@@ -2,6 +2,23 @@
 
 #include <SDL.h>
 
+struct MacOSMagnifyPoint
+{
+    int x;
+    int y;
+};
+
+inline MacOSMagnifyPoint mapMacOSTrackpadContact(float contactX, float contactY,
+                                                  float startCentroidX, float startCentroidY,
+                                                  int baseX, int baseY,
+                                                  int windowWidth, int windowHeight)
+{
+    return {
+        baseX + (int)((contactX - startCentroidX) * windowWidth),
+        baseY - (int)((contactY - startCentroidY) * windowHeight)
+    };
+}
+
 struct MacOSMagnifyEvent
 {
     float magnification;
@@ -9,6 +26,11 @@ struct MacOSMagnifyEvent
     int y;
     int touchCount;
     unsigned int phase;
+    bool hasRawContacts;
+    int touch1X;
+    int touch1Y;
+    int touch2X;
+    int touch2Y;
 };
 
 // Installs a local AppKit event monitor for native trackpad pinch gestures.

@@ -432,7 +432,9 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 #endif
 }
 
-void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase)
+void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase,
+                                           bool hasRawContacts, int rawTouch1X, int rawTouch1Y,
+                                           int rawTouch2X, int rawTouch2Y)
 {
     constexpr unsigned int GestureStateBegan = 1;
     constexpr unsigned int GestureStateEnded = 3;
@@ -462,6 +464,11 @@ void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, in
         m_MagnifyTouchCenterX = qBound(0.0f, (x - dst.x) / (float)dst.w, 1.0f);
         m_MagnifyTouchCenterY = qBound(0.0f, (y - dst.y) / (float)dst.h, 1.0f);
 
+        const float rawTouch1NormalizedX = qBound(0.0f, (rawTouch1X - dst.x) / (float)dst.w, 1.0f);
+        const float rawTouch1NormalizedY = qBound(0.0f, (rawTouch1Y - dst.y) / (float)dst.h, 1.0f);
+        const float rawTouch2NormalizedX = qBound(0.0f, (rawTouch2X - dst.x) / (float)dst.w, 1.0f);
+        const float rawTouch2NormalizedY = qBound(0.0f, (rawTouch2Y - dst.y) / (float)dst.h, 1.0f);
+
         const bool ending = phase == GestureStateEnded ||
                             phase == GestureStateCancelled ||
                             phase == GestureStateFailed;
@@ -474,37 +481,59 @@ void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, in
             m_MagnifyTouchActive = true;
 
             LiSendTouchEvent(LI_TOUCH_EVENT_DOWN, MagnifyTouch1,
-                             qBound(0.0f, m_MagnifyTouchCenterX - m_MagnifyTouchRadius, 1.0f),
-                             m_MagnifyTouchCenterY, 0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+                             hasRawContacts ? rawTouch1NormalizedX :
+                                 qBound(0.0f, m_MagnifyTouchCenterX - m_MagnifyTouchRadius, 1.0f),
+                             hasRawContacts ? rawTouch1NormalizedY : m_MagnifyTouchCenterY,
+                             0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
             LiSendTouchEvent(LI_TOUCH_EVENT_DOWN, MagnifyTouch2,
-                             qBound(0.0f, m_MagnifyTouchCenterX + m_MagnifyTouchRadius, 1.0f),
-                             m_MagnifyTouchCenterY, 0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+                             hasRawContacts ? rawTouch2NormalizedX :
+                                 qBound(0.0f, m_MagnifyTouchCenterX + m_MagnifyTouchRadius, 1.0f),
+                             hasRawContacts ? rawTouch2NormalizedY : m_MagnifyTouchCenterY,
+                             0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
+
+            // DOWN already carries the current raw positions. Avoid emitting a
+            // redundant MOVE for the recognizer's begin callback.
+            if (hasRawContacts && phase == GestureStateBegan) {
+                if (isZoomDiagnosticLoggingEnabled()) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                "ZoomDiag magnify-touch: source=raw contacts=((%.6f,%.6f),(%.6f,%.6f)) phase=%u eventType=%u touches=%d",
+                                rawTouch1NormalizedX, rawTouch1NormalizedY,
+                                rawTouch2NormalizedX, rawTouch2NormalizedY,
+                                phase, LI_TOUCH_EVENT_DOWN, touchCount);
+                }
+                return;
+            }
         }
 
-        // The recognizer supplies incremental magnification because the bridge
-        // resets its value after every callback. Move the contacts apart or
-        // together for scale while their shared center carries X/Y translation.
-        m_MagnifyTouchRadius = qBound(0.005f,
-                                      m_MagnifyTouchRadius * (1.0f + magnification),
-                                      0.25f);
+        if (!hasRawContacts) {
+            // Fall back to synthetic contacts when raw trackpad frames are not
+            // available. The recognizer supplies incremental magnification.
+            m_MagnifyTouchRadius = qBound(0.005f,
+                                          m_MagnifyTouchRadius * (1.0f + magnification),
+                                          0.25f);
+        }
 
-        const float touch1X = qBound(0.0f, m_MagnifyTouchCenterX - m_MagnifyTouchRadius, 1.0f);
-        const float touch2X = qBound(0.0f, m_MagnifyTouchCenterX + m_MagnifyTouchRadius, 1.0f);
+        const float touch1X = hasRawContacts ? rawTouch1NormalizedX :
+                                  qBound(0.0f, m_MagnifyTouchCenterX - m_MagnifyTouchRadius, 1.0f);
+        const float touch1Y = hasRawContacts ? rawTouch1NormalizedY : m_MagnifyTouchCenterY;
+        const float touch2X = hasRawContacts ? rawTouch2NormalizedX :
+                                  qBound(0.0f, m_MagnifyTouchCenterX + m_MagnifyTouchRadius, 1.0f);
+        const float touch2Y = hasRawContacts ? rawTouch2NormalizedY : m_MagnifyTouchCenterY;
         const uint8_t touchEventType = (phase == GestureStateCancelled || phase == GestureStateFailed) ?
                                            LI_TOUCH_EVENT_CANCEL :
                                            ending ? LI_TOUCH_EVENT_UP : LI_TOUCH_EVENT_MOVE;
 
-        LiSendTouchEvent(touchEventType, MagnifyTouch1, touch1X, m_MagnifyTouchCenterY,
+        LiSendTouchEvent(touchEventType, MagnifyTouch1, touch1X, touch1Y,
                          0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
-        LiSendTouchEvent(touchEventType, MagnifyTouch2, touch2X, m_MagnifyTouchCenterY,
+        LiSendTouchEvent(touchEventType, MagnifyTouch2, touch2X, touch2Y,
                          0.0f, 0.0f, 0.0f, LI_ROT_UNKNOWN);
 
         if (isZoomDiagnosticLoggingEnabled()) {
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "ZoomDiag magnify-touch: magnification=%.6f center=(%.6f,%.6f) radius=%.6f contacts=(%.6f,%.6f) phase=%u eventType=%u touches=%d",
-                        magnification,
+                        "ZoomDiag magnify-touch: source=%s magnification=%.6f center=(%.6f,%.6f) radius=%.6f contacts=((%.6f,%.6f),(%.6f,%.6f)) phase=%u eventType=%u touches=%d",
+                        hasRawContacts ? "raw" : "synthetic", magnification,
                         m_MagnifyTouchCenterX, m_MagnifyTouchCenterY,
-                        m_MagnifyTouchRadius, touch1X, touch2X,
+                        m_MagnifyTouchRadius, touch1X, touch1Y, touch2X, touch2Y,
                         phase, touchEventType, touchCount);
         }
 

@@ -98,7 +98,8 @@ public:
 
     void handleMouseWheelEvent(SDL_MouseWheelEvent* event);
 
-    void handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase);
+    void handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase,
+                              bool hasRawContacts, int touch1X, int touch1Y, int touch2X, int touch2Y);
 
     void handleControllerAxisEvent(SDL_ControllerAxisEvent* event);
 

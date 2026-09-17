@@ -61,6 +61,12 @@ typedef int32_t (*MTDeviceStopFn)(MTDeviceRef);
     float _rawCentroidX;
     float _rawCentroidY;
     int _rawTouchCount;
+    int32_t _rawContactPath1;
+    int32_t _rawContactPath2;
+    float _rawContact1X;
+    float _rawContact1Y;
+    float _rawContact2X;
+    float _rawContact2Y;
 
     BOOL _rawPinchActive;
     float _rawStartX;
@@ -98,13 +104,23 @@ static void rawTouchCallback(MTDeviceRef,
                         y:(int)y
                touchCount:(int)touchCount
                     phase:(unsigned int)phase
+           rawContact1X:(int)touch1X
+           rawContact1Y:(int)touch1Y
+           rawContact2X:(int)touch2X
+           rawContact2Y:(int)touch2Y
+          hasRawContacts:(BOOL)hasRawContacts
 {
     MacOSMagnifyEvent* magnify = new MacOSMagnifyEvent {
         magnification,
         x,
         y,
         touchCount,
-        phase
+        phase,
+        hasRawContacts == YES,
+        touch1X,
+        touch1Y,
+        touch2X,
+        touch2Y
     };
 
     SDL_Event event = {};
@@ -190,6 +206,8 @@ static void rawTouchCallback(MTDeviceRef,
     float centroidX = 0.0f;
     float centroidY = 0.0f;
     int activeCount = 0;
+    const MTTouch* firstContact = nullptr;
+    const MTTouch* secondContact = nullptr;
 
     for (size_t i = 0; i < count; i++) {
         // MakeTouch and Touching are the stable contact states. Including
@@ -198,6 +216,14 @@ static void rawTouchCallback(MTDeviceRef,
             centroidX += touches[i].normalized.position.x;
             centroidY += touches[i].normalized.position.y;
             activeCount++;
+
+            if (firstContact == nullptr || touches[i].pathIndex < firstContact->pathIndex) {
+                secondContact = firstContact;
+                firstContact = &touches[i];
+            }
+            else if (secondContact == nullptr || touches[i].pathIndex < secondContact->pathIndex) {
+                secondContact = &touches[i];
+            }
         }
     }
 
@@ -208,11 +234,77 @@ static void rawTouchCallback(MTDeviceRef,
     centroidX /= activeCount;
     centroidY /= activeCount;
 
+    BOOL pushRawMove = NO;
+    int touch1X = 0;
+    int touch1Y = 0;
+    int touch2X = 0;
+    int touch2Y = 0;
+    int focalX = 0;
+    int focalY = 0;
+
     @synchronized(self) {
         _hasRawCentroid = YES;
         _rawCentroidX = centroidX;
         _rawCentroidY = centroidY;
         _rawTouchCount = activeCount;
+
+        if (!_rawPinchActive) {
+            _rawContactPath1 = firstContact->pathIndex;
+            _rawContactPath2 = secondContact->pathIndex;
+        }
+
+        const MTTouch* tracked1 = nullptr;
+        const MTTouch* tracked2 = nullptr;
+        for (size_t i = 0; i < count; i++) {
+            if (touches[i].state < 3 || touches[i].state > 5) {
+                continue;
+            }
+            if (touches[i].pathIndex == _rawContactPath1) {
+                tracked1 = &touches[i];
+            }
+            else if (touches[i].pathIndex == _rawContactPath2) {
+                tracked2 = &touches[i];
+            }
+        }
+
+        if (tracked1 != nullptr && tracked2 != nullptr) {
+            _rawContact1X = tracked1->normalized.position.x;
+            _rawContact1Y = tracked1->normalized.position.y;
+            _rawContact2X = tracked2->normalized.position.x;
+            _rawContact2Y = tracked2->normalized.position.y;
+
+            if (_rawPinchActive) {
+                const MacOSMagnifyPoint touch1 = mapMacOSTrackpadContact(
+                    _rawContact1X, _rawContact1Y, _rawStartX, _rawStartY,
+                    _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
+                const MacOSMagnifyPoint touch2 = mapMacOSTrackpadContact(
+                    _rawContact2X, _rawContact2Y, _rawStartX, _rawStartY,
+                    _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
+                touch1X = touch1.x;
+                touch1Y = touch1.y;
+                touch2X = touch2.x;
+                touch2Y = touch2.y;
+                focalX = (touch1X + touch2X) / 2;
+                focalY = (touch1Y + touch2Y) / 2;
+                pushRawMove = YES;
+            }
+        }
+    }
+
+    // AppKit only invokes the magnification recognizer while scale changes.
+    // Queue raw contact frames too so two-finger translation continues even
+    // when the distance between the contacts is momentarily unchanged.
+    if (pushRawMove) {
+        [self pushMagnification:0.0f
+                             x:focalX
+                             y:focalY
+                    touchCount:activeCount
+                         phase:NSGestureRecognizerStateChanged
+                  rawContact1X:touch1X
+                  rawContact1Y:touch1Y
+                  rawContact2X:touch2X
+                  rawContact2Y:touch2Y
+                 hasRawContacts:YES];
     }
 }
 
@@ -240,6 +332,11 @@ static void rawTouchCallback(MTDeviceRef,
                         phase == NSGestureRecognizerStateCancelled ||
                         phase == NSGestureRecognizerStateFailed;
     BOOL activateRawAfterPush = NO;
+    BOOL useRawContacts = NO;
+    int touch1X = 0;
+    int touch1Y = 0;
+    int touch2X = 0;
+    int touch2Y = 0;
 
     @synchronized(self) {
         if (phase == NSGestureRecognizerStateBegan) {
@@ -254,10 +351,21 @@ static void rawTouchCallback(MTDeviceRef,
             }
         }
 
-        if (_rawPinchActive) {
-            focalX = _gestureBaseX + (int)((_rawCentroidX - _rawStartX) * _gestureWindowWidth);
-            focalY = _gestureBaseY - (int)((_rawCentroidY - _rawStartY) * _gestureWindowHeight);
+        if (activateRawAfterPush || _rawPinchActive) {
+            const MacOSMagnifyPoint touch1 = mapMacOSTrackpadContact(
+                _rawContact1X, _rawContact1Y, _rawStartX, _rawStartY,
+                _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
+            const MacOSMagnifyPoint touch2 = mapMacOSTrackpadContact(
+                _rawContact2X, _rawContact2Y, _rawStartX, _rawStartY,
+                _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
+            touch1X = touch1.x;
+            touch1Y = touch1.y;
+            touch2X = touch2.x;
+            touch2Y = touch2.y;
+            focalX = (touch1X + touch2X) / 2;
+            focalY = (touch1Y + touch2Y) / 2;
             touchCount = _rawTouchCount;
+            useRawContacts = YES;
         }
 
         // Stop raw-frame events before queuing the UP/CANCEL event, otherwise
@@ -270,11 +378,21 @@ static void rawTouchCallback(MTDeviceRef,
     const float magnification = (float)recognizer.magnification;
     recognizer.magnification = 0.0;
 
-    [self pushMagnification:magnification
-                         x:focalX
-                         y:focalY
-                touchCount:touchCount
-                     phase:phase];
+    // Raw contact frames are the authoritative geometry while available. The
+    // recognizer is retained for gesture begin/end and as a fallback on Macs
+    // where the private contact API cannot be loaded.
+    if (!_rawPinchActive || phase != NSGestureRecognizerStateChanged) {
+        [self pushMagnification:magnification
+                             x:focalX
+                             y:focalY
+                    touchCount:touchCount
+                         phase:phase
+                  rawContact1X:touch1X
+                  rawContact1Y:touch1Y
+                  rawContact2X:touch2X
+                  rawContact2Y:touch2Y
+                 hasRawContacts:useRawContacts];
+    }
 
     // Start raw-frame events only after the DOWN event is in the SDL queue.
     if (activateRawAfterPush) {

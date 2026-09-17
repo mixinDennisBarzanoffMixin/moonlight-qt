@@ -58,6 +58,18 @@ Each command writes a timestamped report under `moonlight-diagnostics/`. Attach
 that report and the two screenshots to the same issue. Before sharing a report,
 review it for machine names or network addresses you consider private.
 
+To run the macOS raw-contact mapping simulation from the repository root:
+
+```sh
+xcrun clang++ -std=c++17 -Ilibs/mac/include -Ilibs/mac/include/SDL2 \
+  tools/zoom-diagnostics/test-macos-contact-mapping.cpp \
+  -o /tmp/moonlight-contact-mapping-test && \
+  /tmp/moonlight-contact-mapping-test
+```
+
+The simulation verifies diagonal contact geometry, simultaneous X/Y
+translation, and immediate response when the pinch direction reverses.
+
 ## What the report distinguishes
 
 - Client display resolution and operating-system DPI scaling

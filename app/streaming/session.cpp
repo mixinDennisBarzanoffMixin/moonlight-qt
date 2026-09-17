@@ -2019,7 +2019,12 @@ void Session::exec()
                                                      magnify->x,
                                                      magnify->y,
                                                      magnify->touchCount,
-                                                     magnify->phase);
+                                                     magnify->phase,
+                                                     magnify->hasRawContacts,
+                                                     magnify->touch1X,
+                                                     magnify->touch1Y,
+                                                     magnify->touch2X,
+                                                     magnify->touch2Y);
                 delete magnify;
             }
             continue;
