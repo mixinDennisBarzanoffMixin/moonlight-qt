@@ -47,10 +47,12 @@ and the foreground process name to
 buttons, window titles, clipboard contents, or credentials.
 
 For the opt-in KiCad comparison build, launch Moonlight with
-`MOONLIGHT_CAD_SCROLL_FILTER=1`. On macOS this suppresses horizontal trackpad
-drift and coalesces vertical wheel input. The default interval is 40 ms and can
-be changed with `MOONLIGHT_CAD_SCROLL_INTERVAL_MS`; normal Moonlight behavior is
-unchanged when the filter is disabled.
+`MOONLIGHT_CAD_SCROLL_FILTER=1`. On macOS this coalesces high-rate vertical and
+horizontal trackpad input. The default interval is 40 ms and can be changed
+with `MOONLIGHT_CAD_SCROLL_INTERVAL_MS`. Set
+`MOONLIGHT_CAD_SCROLL_SCALE_PERCENT` from 10 through 100 to reduce the coalesced
+wheel sensitivity without affecting native pinch gestures. Normal Moonlight
+behavior is unchanged when the filter is disabled.
 
 Each command writes a timestamped report under `moonlight-diagnostics/`. Attach
 that report and the two screenshots to the same issue. Before sharing a report,

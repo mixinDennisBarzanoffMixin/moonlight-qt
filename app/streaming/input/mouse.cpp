@@ -25,6 +25,15 @@ static Uint32 cadScrollIntervalMs()
     return interval;
 }
 
+static float cadScrollScale()
+{
+    static const float scale = []() {
+        const int configured = qEnvironmentVariableIntValue("MOONLIGHT_CAD_SCROLL_SCALE_PERCENT");
+        return qBound(10, configured == 0 ? 100 : configured, 100) / 100.0f;
+    }();
+    return scale;
+}
+
 void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
 {
     int button;
@@ -302,7 +311,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
                 }
             }
             else {
-                event->preciseY = SDL_clamp(pendingValue, -1.0f, 1.0f);
+                event->preciseY = SDL_clamp(pendingValue * cadScrollScale(), -1.0f, 1.0f);
                 pendingValue = 0.0f;
                 lastSendTimestamp = now;
             }
@@ -367,7 +376,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
                 }
             }
             else {
-                event->preciseX = SDL_clamp(pendingValue, -1.0f, 1.0f);
+                event->preciseX = SDL_clamp(pendingValue * cadScrollScale(), -1.0f, 1.0f);
                 pendingValue = 0.0f;
                 lastSendTimestamp = now;
             }
