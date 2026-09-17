@@ -67,8 +67,6 @@ typedef int32_t (*MTDeviceStopFn)(MTDeviceRef);
     float _rawContact1Y;
     float _rawContact2X;
     float _rawContact2Y;
-    float _rawStartDistanceSquared;
-
     BOOL _rawPinchActive;
     float _rawStartX;
     float _rawStartY;
@@ -277,14 +275,11 @@ static void rawTouchCallback(MTDeviceRef,
             _rawContact2Y = tracked2->normalized.position.y;
 
             if (_rawPinchActive) {
-                const MacOSMagnifyContacts contacts = invertMacOSPinchScale(
-                    _rawContact1X, _rawContact1Y, _rawContact2X, _rawContact2Y,
-                    _rawStartDistanceSquared);
                 const MacOSMagnifyPoint touch1 = mapMacOSTrackpadContact(
-                    contacts.touch1X, contacts.touch1Y, _rawStartX, _rawStartY,
+                    _rawContact1X, _rawContact1Y, _rawStartX, _rawStartY,
                     _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
                 const MacOSMagnifyPoint touch2 = mapMacOSTrackpadContact(
-                    contacts.touch2X, contacts.touch2Y, _rawStartX, _rawStartY,
+                    _rawContact2X, _rawContact2Y, _rawStartX, _rawStartY,
                     _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
                 touch1X = touch1.x;
                 touch1Y = touch1.y;
@@ -354,22 +349,16 @@ static void rawTouchCallback(MTDeviceRef,
             if (_hasRawCentroid) {
                 _rawStartX = _rawCentroidX;
                 _rawStartY = _rawCentroidY;
-                const float startDeltaX = _rawContact2X - _rawContact1X;
-                const float startDeltaY = _rawContact2Y - _rawContact1Y;
-                _rawStartDistanceSquared = startDeltaX * startDeltaX + startDeltaY * startDeltaY;
                 activateRawAfterPush = YES;
             }
         }
 
         if (activateRawAfterPush || _rawPinchActive) {
-            const MacOSMagnifyContacts contacts = invertMacOSPinchScale(
-                _rawContact1X, _rawContact1Y, _rawContact2X, _rawContact2Y,
-                _rawStartDistanceSquared);
             const MacOSMagnifyPoint touch1 = mapMacOSTrackpadContact(
-                contacts.touch1X, contacts.touch1Y, _rawStartX, _rawStartY,
+                _rawContact1X, _rawContact1Y, _rawStartX, _rawStartY,
                 _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
             const MacOSMagnifyPoint touch2 = mapMacOSTrackpadContact(
-                contacts.touch2X, contacts.touch2Y, _rawStartX, _rawStartY,
+                _rawContact2X, _rawContact2Y, _rawStartX, _rawStartY,
                 _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
             touch1X = touch1.x;
             touch1Y = touch1.y;

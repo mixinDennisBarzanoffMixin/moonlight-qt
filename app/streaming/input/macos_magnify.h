@@ -8,37 +8,6 @@ struct MacOSMagnifyPoint
     int y;
 };
 
-struct MacOSMagnifyContacts
-{
-    float touch1X;
-    float touch1Y;
-    float touch2X;
-    float touch2Y;
-};
-
-inline MacOSMagnifyContacts invertMacOSPinchScale(float touch1X, float touch1Y,
-                                                   float touch2X, float touch2Y,
-                                                   float startDistanceSquared)
-{
-    const float centerX = (touch1X + touch2X) * 0.5f;
-    const float centerY = (touch1Y + touch2Y) * 0.5f;
-    const float deltaX = touch2X - touch1X;
-    const float deltaY = touch2Y - touch1Y;
-    const float currentDistanceSquared = deltaX * deltaX + deltaY * deltaY;
-
-    // Windows' remote touch stack interprets the macOS raw-contact scale in
-    // the opposite direction. Reflect only the distance ratio around the live
-    // centroid; translation and contact orientation remain unchanged.
-    const float factor = startDistanceSquared > 0.000001f && currentDistanceSquared > 0.000001f ?
-                             startDistanceSquared / currentDistanceSquared : 1.0f;
-    return {
-        centerX + (touch1X - centerX) * factor,
-        centerY + (touch1Y - centerY) * factor,
-        centerX + (touch2X - centerX) * factor,
-        centerY + (touch2Y - centerY) * factor
-    };
-}
-
 inline MacOSMagnifyPoint mapMacOSTrackpadContact(float contactX, float contactY,
                                                   float startCentroidX, float startCentroidY,
                                                   int baseX, int baseY,
