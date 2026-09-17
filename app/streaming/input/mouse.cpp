@@ -4,6 +4,8 @@
 #include "SDL_compat.h"
 #include "streaming/streamutils.h"
 
+#include "macos_magnify.h"
+
 static bool isZoomDiagnosticLoggingEnabled()
 {
     static const bool enabled = qEnvironmentVariableIntValue("MOONLIGHT_ZOOM_DIAGNOSTICS") != 0;
@@ -434,9 +436,10 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 
 void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase,
                                            bool hasRawContacts, int rawTouch1X, int rawTouch1Y,
-                                           int rawTouch2X, int rawTouch2Y)
+                                           int rawTouch2X, int rawTouch2Y, bool isRawFrame)
 {
     constexpr unsigned int GestureStateBegan = 1;
+    constexpr unsigned int GestureStateChanged = 2;
     constexpr unsigned int GestureStateEnded = 3;
     constexpr unsigned int GestureStateCancelled = 4;
     constexpr unsigned int GestureStateFailed = 5;
@@ -452,8 +455,82 @@ void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, in
         return;
     }
 
+    if (m_ResolvePinchMode) {
+        // Raw frames carry native touch geometry. Resolve on Windows doesn't
+        // consume those pinch gestures; its documented timeline zoom gesture
+        // is Alt+mouse wheel, so only use AppKit's magnification callbacks.
+        if (isRawFrame) {
+            return;
+        }
+
+        if (m_MagnifyTouchActive) {
+            LiSendTouchEvent(LI_TOUCH_EVENT_CANCEL_ALL, 0, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, LI_ROT_UNKNOWN);
+            m_MagnifyTouchActive = false;
+        }
+
+        if (phase == GestureStateBegan) {
+            m_MagnifyWheelRemainder = 0.0f;
+        }
+
+        const short wireValue = macOSMagnificationToWheelDelta(magnification,
+                                                                m_MagnifyWheelRemainder);
+        if (wireValue == 0) {
+            return;
+        }
+
+        if (m_AbsoluteMouseMode) {
+            int windowWidth, windowHeight;
+            SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);
+
+            SDL_Rect src = { 0, 0, m_StreamWidth, m_StreamHeight };
+            SDL_Rect dst = { 0, 0, windowWidth, windowHeight };
+            StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+            if (isMouseInVideoRegion(x, y, windowWidth, windowHeight)) {
+                const int mappedX = qMin(qMax(x - dst.x, 0), dst.w);
+                const int mappedY = qMin(qMax(y - dst.y, 0), dst.h);
+                LiSendMousePositionEvent((short)mappedX, (short)mappedY, dst.w, dst.h);
+            }
+        }
+
+        constexpr short VK_LMENU = 0xA4;
+        const short wireAltCode = (short)(0x8000 | VK_LMENU);
+        const bool altAlreadyDown = m_KeysDown.contains(VK_LMENU) || m_KeysDown.contains(0xA5);
+
+        if (!altAlreadyDown) {
+            LiSendKeyboardEvent2(wireAltCode,
+                                 KEY_ACTION_DOWN,
+                                 MODIFIER_ALT,
+                                 0);
+        }
+
+        LiSendHighResScrollEvent(wireValue);
+
+        if (!altAlreadyDown) {
+            LiSendKeyboardEvent2(wireAltCode,
+                                 KEY_ACTION_UP,
+                                 0,
+                                 0);
+        }
+
+        if (isZoomDiagnosticLoggingEnabled()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "ZoomDiag magnify-resolve: magnification=%.6f wire=%d remainder=%.6f focal=(%d,%d) touches=%d phase=%u altAlreadyDown=%d",
+                        magnification, wireValue, m_MagnifyWheelRemainder,
+                        x, y, touchCount, phase, altAlreadyDown);
+        }
+        return;
+    }
+
     const bool hostSupportsTouch = (LiGetHostFeatureFlags() & LI_FF_PEN_TOUCH_EVENTS) != 0;
     if (hostSupportsTouch) {
+        // Raw contacts are authoritative for Changed events in native mode.
+        // Ignore the parallel AppKit callback to avoid duplicate scale updates.
+        if (hasRawContacts && !isRawFrame && phase == GestureStateChanged) {
+            return;
+        }
+
         int windowWidth, windowHeight;
         SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);
 
@@ -567,9 +644,8 @@ void SdlInputHandler::handleMagnifyGesture(float magnification, int x, int y, in
     // NSEvent magnification is a fractional scale delta. A cumulative 0.1
     // magnification maps to one Windows WHEEL_DELTA notch. Preserve fractional
     // wire deltas between events so slow pinches are never lost to rounding.
-    const float scaledDelta = magnification * 1200.0f + m_MagnifyWheelRemainder;
-    const short wireValue = (short)SDL_clamp((int)scaledDelta, -120, 120);
-    m_MagnifyWheelRemainder = scaledDelta - wireValue;
+    const short wireValue = macOSMagnificationToWheelDelta(magnification,
+                                                            m_MagnifyWheelRemainder);
 
     if (wireValue == 0) {
         return;

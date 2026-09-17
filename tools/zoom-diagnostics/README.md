@@ -68,7 +68,23 @@ xcrun clang++ -std=c++17 -Ilibs/mac/include -Ilibs/mac/include/SDL2 \
 ```
 
 The simulation verifies diagonal contact geometry, simultaneous X/Y
-translation, and immediate response when the pinch direction reverses.
+translation, immediate response when the pinch direction reverses, and the
+expected zoom direction for both native-touch and Resolve transports.
+
+## Pinch transport
+
+Native Windows touch is the default and should be used for browsers and KiCad.
+DaVinci Resolve's Windows timeline does not consume that native pinch gesture;
+its documented mouse gesture is Alt+scroll. Enable **Use DaVinci
+Resolve-compatible pinch zoom** under Input Settings before connecting, or
+press `Ctrl+Alt+Shift+P` during a stream to toggle the current session between:
+
+- native Windows touch for browsers and KiCad;
+- DaVinci Resolve Alt+high-resolution-wheel input.
+
+The two transports are mutually exclusive: a pinch never sends both native
+touch and Alt+wheel. The in-stream shortcut is session-only; the Input Settings
+checkbox supplies the default for future sessions.
 
 ## What the report distinguishes
 

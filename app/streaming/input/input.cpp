@@ -42,7 +42,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_MagnifyTouchActive(false),
       m_MagnifyTouchCenterX(0.0f),
       m_MagnifyTouchCenterY(0.0f),
-      m_MagnifyTouchRadius(0.035f)
+      m_MagnifyTouchRadius(0.035f),
+      m_ResolvePinchMode(prefs.resolvePinchMode)
 {
     // System keys are always captured when running without a DE
     if (!WMUtils::isRunningDesktopEnvironment()) {
@@ -143,6 +144,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].keyCode = SDLK_k;
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].scanCode = SDL_SCANCODE_K;
     m_SpecialKeyCombos[KeyComboToggleKeyboardGrab].enabled = WMUtils::isRunningDesktopEnvironment();
+
+    m_SpecialKeyCombos[KeyComboTogglePinchMode].keyCombo = KeyComboTogglePinchMode;
+    m_SpecialKeyCombos[KeyComboTogglePinchMode].keyCode = SDLK_p;
+    m_SpecialKeyCombos[KeyComboTogglePinchMode].scanCode = SDL_SCANCODE_P;
+    m_SpecialKeyCombos[KeyComboTogglePinchMode].enabled = true;
 
     m_OldIgnoreDevices = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES);
     m_OldIgnoreDevicesExcept = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT);

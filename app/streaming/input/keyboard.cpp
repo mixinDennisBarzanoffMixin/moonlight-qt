@@ -168,6 +168,19 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         updateKeyboardGrabState();
         break;
 
+    case KeyComboTogglePinchMode:
+        if (m_MagnifyTouchActive) {
+            LiSendTouchEvent(LI_TOUCH_EVENT_CANCEL_ALL, 0, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, LI_ROT_UNKNOWN);
+            m_MagnifyTouchActive = false;
+        }
+        m_MagnifyWheelRemainder = 0.0f;
+        m_ResolvePinchMode = !m_ResolvePinchMode;
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Pinch transport changed to %s",
+                    m_ResolvePinchMode ? "DaVinci Resolve Alt+wheel" : "native Windows touch");
+        break;
+
     default:
         Q_UNREACHABLE();
     }

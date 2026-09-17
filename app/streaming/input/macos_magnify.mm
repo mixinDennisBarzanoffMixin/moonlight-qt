@@ -67,6 +67,7 @@ typedef int32_t (*MTDeviceStopFn)(MTDeviceRef);
     float _rawContact1Y;
     float _rawContact2X;
     float _rawContact2Y;
+    float _rawStartDistanceSquared;
 
     BOOL _rawPinchActive;
     float _rawStartX;
@@ -109,6 +110,7 @@ static void rawTouchCallback(MTDeviceRef,
            rawContact2X:(int)touch2X
            rawContact2Y:(int)touch2Y
           hasRawContacts:(BOOL)hasRawContacts
+               rawFrame:(BOOL)isRawFrame
 {
     MacOSMagnifyEvent* magnify = new MacOSMagnifyEvent {
         magnification,
@@ -120,7 +122,8 @@ static void rawTouchCallback(MTDeviceRef,
         touch1X,
         touch1Y,
         touch2X,
-        touch2Y
+        touch2Y,
+        isRawFrame == YES
     };
 
     SDL_Event event = {};
@@ -274,11 +277,14 @@ static void rawTouchCallback(MTDeviceRef,
             _rawContact2Y = tracked2->normalized.position.y;
 
             if (_rawPinchActive) {
+                const MacOSMagnifyContacts contacts = invertMacOSPinchScale(
+                    _rawContact1X, _rawContact1Y, _rawContact2X, _rawContact2Y,
+                    _rawStartDistanceSquared);
                 const MacOSMagnifyPoint touch1 = mapMacOSTrackpadContact(
-                    _rawContact1X, _rawContact1Y, _rawStartX, _rawStartY,
+                    contacts.touch1X, contacts.touch1Y, _rawStartX, _rawStartY,
                     _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
                 const MacOSMagnifyPoint touch2 = mapMacOSTrackpadContact(
-                    _rawContact2X, _rawContact2Y, _rawStartX, _rawStartY,
+                    contacts.touch2X, contacts.touch2Y, _rawStartX, _rawStartY,
                     _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
                 touch1X = touch1.x;
                 touch1Y = touch1.y;
@@ -304,7 +310,8 @@ static void rawTouchCallback(MTDeviceRef,
                   rawContact1Y:touch1Y
                   rawContact2X:touch2X
                   rawContact2Y:touch2Y
-                 hasRawContacts:YES];
+                 hasRawContacts:YES
+                      rawFrame:YES];
     }
 }
 
@@ -347,16 +354,22 @@ static void rawTouchCallback(MTDeviceRef,
             if (_hasRawCentroid) {
                 _rawStartX = _rawCentroidX;
                 _rawStartY = _rawCentroidY;
+                const float startDeltaX = _rawContact2X - _rawContact1X;
+                const float startDeltaY = _rawContact2Y - _rawContact1Y;
+                _rawStartDistanceSquared = startDeltaX * startDeltaX + startDeltaY * startDeltaY;
                 activateRawAfterPush = YES;
             }
         }
 
         if (activateRawAfterPush || _rawPinchActive) {
+            const MacOSMagnifyContacts contacts = invertMacOSPinchScale(
+                _rawContact1X, _rawContact1Y, _rawContact2X, _rawContact2Y,
+                _rawStartDistanceSquared);
             const MacOSMagnifyPoint touch1 = mapMacOSTrackpadContact(
-                _rawContact1X, _rawContact1Y, _rawStartX, _rawStartY,
+                contacts.touch1X, contacts.touch1Y, _rawStartX, _rawStartY,
                 _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
             const MacOSMagnifyPoint touch2 = mapMacOSTrackpadContact(
-                _rawContact2X, _rawContact2Y, _rawStartX, _rawStartY,
+                contacts.touch2X, contacts.touch2Y, _rawStartX, _rawStartY,
                 _gestureBaseX, _gestureBaseY, _gestureWindowWidth, _gestureWindowHeight);
             touch1X = touch1.x;
             touch1Y = touch1.y;
@@ -378,21 +391,20 @@ static void rawTouchCallback(MTDeviceRef,
     const float magnification = (float)recognizer.magnification;
     recognizer.magnification = 0.0;
 
-    // Raw contact frames are the authoritative geometry while available. The
-    // recognizer is retained for gesture begin/end and as a fallback on Macs
-    // where the private contact API cannot be loaded.
-    if (!_rawPinchActive || phase != NSGestureRecognizerStateChanged) {
-        [self pushMagnification:magnification
-                             x:focalX
-                             y:focalY
-                    touchCount:touchCount
-                         phase:phase
-                  rawContact1X:touch1X
-                  rawContact1Y:touch1Y
-                  rawContact2X:touch2X
-                  rawContact2Y:touch2Y
-                 hasRawContacts:useRawContacts];
-    }
+    // Raw frames carry native-touch geometry. Recognizer callbacks remain in
+    // the queue for the Resolve Alt+wheel compatibility mode and are ignored
+    // by native-touch mode while raw contacts are active.
+    [self pushMagnification:magnification
+                         x:focalX
+                         y:focalY
+                touchCount:touchCount
+                     phase:phase
+              rawContact1X:touch1X
+              rawContact1Y:touch1Y
+              rawContact2X:touch2X
+              rawContact2Y:touch2Y
+             hasRawContacts:useRawContacts
+                  rawFrame:NO];
 
     // Start raw-frame events only after the DOWN event is in the SDL queue.
     if (activateRawAfterPush) {

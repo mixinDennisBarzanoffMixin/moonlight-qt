@@ -1347,6 +1347,24 @@ Flickable {
                                   qsTr("NOTE: Due to a bug in GeForce Experience, this option may not work properly if your host PC has multiple monitors.")
                 }
 
+                CheckBox {
+                    id: resolvePinchModeCheck
+                    hoverEnabled: true
+                    width: parent.width
+                    text: qsTr("Use DaVinci Resolve-compatible pinch zoom")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.resolvePinchMode
+                    onCheckedChanged: {
+                        StreamingPreferences.resolvePinchMode = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 10000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Sends pinch as Alt+high-resolution mouse wheel for DaVinci Resolve instead of native Windows touch. Browsers and KiCad should normally use native touch mode.") + " " +
+                                  qsTr("You can toggle this while streaming using Ctrl+Alt+Shift+P.")
+                }
+
                 Row {
                     spacing: 5
                     width: parent.width

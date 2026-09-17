@@ -99,7 +99,8 @@ public:
     void handleMouseWheelEvent(SDL_MouseWheelEvent* event);
 
     void handleMagnifyGesture(float magnification, int x, int y, int touchCount, unsigned int phase,
-                              bool hasRawContacts, int touch1X, int touch1Y, int touch2X, int touch2Y);
+                              bool hasRawContacts, int touch1X, int touch1Y, int touch2X, int touch2Y,
+                              bool isRawFrame);
 
     void handleControllerAxisEvent(SDL_ControllerAxisEvent* event);
 
@@ -171,6 +172,7 @@ private:
         KeyComboTogglePointerRegionLock,
         KeyComboQuitAndExit,
         KeyComboToggleKeyboardGrab,
+        KeyComboTogglePinchMode,
         KeyComboMax
     };
 
@@ -257,6 +259,7 @@ private:
     float m_MagnifyTouchCenterX;
     float m_MagnifyTouchCenterY;
     float m_MagnifyTouchRadius;
+    bool m_ResolvePinchMode;
 
     static const int k_ButtonMap[];
 };

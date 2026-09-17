@@ -2024,7 +2024,8 @@ void Session::exec()
                                                      magnify->touch1X,
                                                      magnify->touch1Y,
                                                      magnify->touch2X,
-                                                     magnify->touch2Y);
+                                                     magnify->touch2Y,
+                                                     magnify->isRawFrame);
                 delete magnify;
             }
             continue;
