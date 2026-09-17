@@ -22,7 +22,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_FakeMouseCaptureActive(false),
       m_KeyboardCaptureActive(false),
       m_CaptureSystemKeysMode(prefs.captureSysKeysMode),
-      m_MouseCursorCapturedVisibilityState(SDL_DISABLE),
+      // In remote-desktop (absolute mouse) mode, draw the cursor locally so
+      // pointer motion is not visually delayed by the video round trip. The
+      // host cursor can be hidden with Sunshine's Ctrl+Alt+Shift+N shortcut,
+      // and Ctrl+Alt+Shift+C still toggles this local cursor when needed.
+      m_MouseCursorCapturedVisibilityState(prefs.absoluteMouseMode ? SDL_ENABLE : SDL_DISABLE),
       m_LongPressTimer(0),
       m_StreamWidth(streamWidth),
       m_StreamHeight(streamHeight),
