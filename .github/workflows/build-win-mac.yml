@@ -91,6 +91,52 @@ jobs:
             bash scripts/generate-dmg.sh Release
           }
 
+      - name: Prepare fleet release artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $releaseDirectory = "build/fleet-release"
+          New-Item -ItemType Directory -Force -Path $releaseDirectory | Out-Null
+          $installer = Get-ChildItem "build/installer-Release/MoonlightSetup-*.exe" -File | Select-Object -First 1
+          if (-not $installer) {
+            throw "Moonlight installer was not produced"
+          }
+          Copy-Item $installer.FullName $releaseDirectory
+          $copiedInstaller = Join-Path $releaseDirectory $installer.Name
+          $sha256 = (Get-FileHash -Algorithm SHA256 $copiedInstaller).Hash.ToLowerInvariant()
+          "$sha256  $($installer.Name)" | Set-Content -Encoding ascii (Join-Path $releaseDirectory "SHA256SUMS.txt")
+          [ordered]@{
+            version_label = $Env:CI_VERSION
+            source_commit = $Env:GITHUB_SHA
+            platform = "windows"
+            architectures = @("x64", "arm64")
+            signed = $false
+            installer = $installer.Name
+            sha256 = $sha256
+          } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $releaseDirectory "release-manifest.json")
+
+      - name: Prepare fleet release artifacts (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/fleet-release
+          dmg="$(find build/installer-Release -maxdepth 1 -name 'Moonlight-*.dmg' -print -quit)"
+          test -n "${dmg}"
+          cp "${dmg}" build/fleet-release/
+          artifact="$(basename "${dmg}")"
+          digest="$(shasum -a 256 "build/fleet-release/${artifact}" | awk '{print $1}')"
+          printf '%s  %s\n' "${digest}" "${artifact}" > build/fleet-release/SHA256SUMS.txt
+          printf '{\n  "version_label": "%s",\n  "source_commit": "%s",\n  "platform": "macos",\n  "architectures": ["x86_64", "arm64"],\n  "signed": false,\n  "artifact": "%s",\n  "sha256": "%s"\n}\n' \
+            "${CI_VERSION}" "${GITHUB_SHA}" "${artifact}" "${digest}" > build/fleet-release/release-manifest.json
+
+      - name: Upload fleet release artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: Moonlight-Fleet-${{ runner.os }}-${{ env.CI_VERSION }}
+          path: build/fleet-release/*
+          if-no-files-found: error
+
       - name: Upload Binaries (Windows x64)
         uses: actions/upload-artifact@v6
         if: runner.os == 'Windows'
