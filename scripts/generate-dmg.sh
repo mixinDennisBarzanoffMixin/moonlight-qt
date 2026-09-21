@@ -15,6 +15,8 @@ BUILD_ROOT=$PWD/build
 SOURCE_ROOT=$PWD
 BUILD_FOLDER=$BUILD_ROOT/build-$BUILD_CONFIG
 INSTALLER_FOLDER=$BUILD_ROOT/installer-$BUILD_CONFIG
+APP_NAME="Moonlight Fleet"
+APP_BUNDLE="$BUILD_FOLDER/app/$APP_NAME.app"
 
 if [ -n "$CI_VERSION" ]; then
   VERSION=$CI_VERSION
@@ -58,29 +60,29 @@ popd
 
 echo Saving dSYM file
 pushd $BUILD_FOLDER
-dsymutil app/Moonlight.app/Contents/MacOS/Moonlight -o Moonlight-$VERSION.dsym || fail "dSYM creation failed!"
-cp -R Moonlight-$VERSION.dsym $INSTALLER_FOLDER || fail "dSYM copy failed!"
+dsymutil "app/$APP_NAME.app/Contents/MacOS/$APP_NAME" -o Moonlight-Fleet-$VERSION.dsym || fail "dSYM creation failed!"
+cp -R Moonlight-Fleet-$VERSION.dsym $INSTALLER_FOLDER || fail "dSYM copy failed!"
 popd
 
 echo Creating app bundle
 EXTRA_ARGS=
 if [ "$BUILD_CONFIG" == "Debug" ]; then EXTRA_ARGS="$EXTRA_ARGS -use-debug-libs"; fi
 echo Extra deployment arguments: $EXTRA_ARGS
-macdeployqt $BUILD_FOLDER/app/Moonlight.app $EXTRA_ARGS -qmldir=$SOURCE_ROOT/app/gui -appstore-compliant || fail "macdeployqt failed!"
+macdeployqt "$APP_BUNDLE" $EXTRA_ARGS -qmldir=$SOURCE_ROOT/app/gui -appstore-compliant || fail "macdeployqt failed!"
 
 echo Removing dSYM files from app bundle
-find $BUILD_FOLDER/app/Moonlight.app/ -name '*.dSYM' | xargs rm -rf
+find "$APP_BUNDLE/" -name '*.dSYM' | xargs rm -rf
 
 if [ "$SIGNING_IDENTITY" != "" ]; then
   echo Signing app bundle
-  codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" $BUILD_FOLDER/app/Moonlight.app || fail "Signing failed!"
+  codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_BUNDLE" || fail "Signing failed!"
 fi
 
 echo Creating DMG
 if [ "$SIGNING_IDENTITY" != "" ]; then
-  create-dmg $BUILD_FOLDER/app/Moonlight.app $INSTALLER_FOLDER --identity="$SIGNING_IDENTITY" --no-version-in-filename || fail "create-dmg failed!"
+  create-dmg "$APP_BUNDLE" "$INSTALLER_FOLDER" --identity="$SIGNING_IDENTITY" --no-version-in-filename || fail "create-dmg failed!"
 else
-  create-dmg $BUILD_FOLDER/app/Moonlight.app $INSTALLER_FOLDER --no-version-in-filename
+  create-dmg "$APP_BUNDLE" "$INSTALLER_FOLDER" --no-version-in-filename
   case $? in
     0) ;;
     2) ;;
@@ -90,11 +92,11 @@ fi
 
 if [ "$NOTARY_KEYCHAIN_PROFILE" != "" ]; then
   echo Uploading to App Notary service
-  xcrun notarytool submit --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" --wait $INSTALLER_FOLDER/Moonlight.dmg || fail "Notary submission failed"
+  xcrun notarytool submit --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" --wait "$INSTALLER_FOLDER/$APP_NAME.dmg" || fail "Notary submission failed"
 
   echo Stapling notary ticket to DMG
-  xcrun stapler staple -v $INSTALLER_FOLDER/Moonlight.dmg || fail "Notary ticket stapling failed!"
+  xcrun stapler staple -v "$INSTALLER_FOLDER/$APP_NAME.dmg" || fail "Notary ticket stapling failed!"
 fi
 
-mv $INSTALLER_FOLDER/Moonlight.dmg $INSTALLER_FOLDER/Moonlight-$VERSION.dmg
+mv "$INSTALLER_FOLDER/$APP_NAME.dmg" "$INSTALLER_FOLDER/Moonlight-Fleet-$VERSION.dmg"
 echo Build successful
