@@ -5,7 +5,7 @@ unix:!macx {
     TARGET = moonlight
 } else {
     # On macOS, this is the name displayed in the global menu bar
-    TARGET = "Moonlight Fleet"
+    TARGET = Moonlight
 }
 
 include(../globaldefs.pri)
