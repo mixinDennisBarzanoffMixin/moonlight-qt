@@ -15,7 +15,7 @@ BUILD_ROOT=$PWD/build
 SOURCE_ROOT=$PWD
 BUILD_FOLDER=$BUILD_ROOT/build-$BUILD_CONFIG
 INSTALLER_FOLDER=$BUILD_ROOT/installer-$BUILD_CONFIG
-APP_NAME="Moonlight"
+APP_NAME="Moonlight Fleet"
 APP_BUNDLE="$BUILD_FOLDER/app/$APP_NAME.app"
 
 if [ -n "$CI_VERSION" ]; then
@@ -60,8 +60,8 @@ popd
 
 echo Saving dSYM file
 pushd $BUILD_FOLDER
-dsymutil "app/$APP_NAME.app/Contents/MacOS/$APP_NAME" -o Moonlight-$VERSION.dsym || fail "dSYM creation failed!"
-cp -R Moonlight-$VERSION.dsym $INSTALLER_FOLDER || fail "dSYM copy failed!"
+dsymutil "app/$APP_NAME.app/Contents/MacOS/$APP_NAME" -o Moonlight-Fleet-$VERSION.dsym || fail "dSYM creation failed!"
+cp -R Moonlight-Fleet-$VERSION.dsym $INSTALLER_FOLDER || fail "dSYM copy failed!"
 popd
 
 echo Creating app bundle

@@ -90,7 +90,12 @@ void NvComputer::serialize(QSettings& settings, bool serializeApps) const
     settings.setValue(SER_IPV6PORT, ipv6Address.port());
     settings.setValue(SER_MANUALADDR, manualAddress.address());
     settings.setValue(SER_MANUALPORT, manualAddress.port());
-    settings.setValue(SER_SRVCERT, serverCert.toPem());
+    // A transient computer discovered by address may not have inherited the
+    // certificate from the saved host yet. Never let that empty object erase a
+    // valid pairing certificate already persisted for this host.
+    if (!serverCert.isNull()) {
+        settings.setValue(SER_SRVCERT, serverCert.toPem());
+    }
     settings.setValue(SER_NVIDIASOFTWARE, isNvidiaServerSoftware);
 
     // Avoid deleting an existing applist if we couldn't get one
